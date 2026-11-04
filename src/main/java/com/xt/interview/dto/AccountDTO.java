@@ -12,6 +12,8 @@ public class AccountDTO {
     private Integer roleLevel;
     private Integer status;
     private Integer isSuper;
+    private Long departmentId;
+    private String departmentName;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 
@@ -43,6 +45,12 @@ public class AccountDTO {
 
     public Integer getIsSuper() { return isSuper; }
     public void setIsSuper(Integer isSuper) { this.isSuper = isSuper; }
+
+    public Long getDepartmentId() { return departmentId; }
+    public void setDepartmentId(Long departmentId) { this.departmentId = departmentId; }
+
+    public String getDepartmentName() { return departmentName; }
+    public void setDepartmentName(String departmentName) { this.departmentName = departmentName; }
 
     public LocalDateTime getCreateTime() { return createTime; }
     public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }

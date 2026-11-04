@@ -2,14 +2,20 @@ package com.xt.interview.service.impl;
 
 import com.xt.interview.dto.AccountDTO;
 import com.xt.interview.entity.Account;
+import com.xt.interview.entity.Department;
 import com.xt.interview.repository.AccountRepository;
+import com.xt.interview.repository.DepartmentRepository;
 import com.xt.interview.service.AccountService;
 import com.xt.interview.util.MD5Util;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,11 +30,15 @@ public class AccountServiceImpl implements AccountService {
     @Autowired
     private AccountRepository accountRepository;
 
+    @Autowired
+    private DepartmentRepository departmentRepository;
+
     @Override
     public AccountDTO createAccount(AccountDTO dto) {
         if (accountRepository.existsByUsernameAndDeleted(dto.getUsername(), NOT_DELETED)) {
             throw new RuntimeException("用户名已存在");
         }
+        validateDepartment(dto.getDepartmentId());
         Account account = new Account();
         account.setUsername(dto.getUsername());
         account.setName(dto.getName());
@@ -40,6 +50,7 @@ public class AccountServiceImpl implements AccountService {
         account.setRoleLevel(dto.getRoleLevel());
         account.setStatus(dto.getStatus());
         account.setIsSuper(dto.getIsSuper());
+        account.setDepartmentId(dto.getDepartmentId());
         account.setDeleted(NOT_DELETED);
         account = accountRepository.save(account);
         return convertToDTO(account);
@@ -55,6 +66,8 @@ public class AccountServiceImpl implements AccountService {
             throw new RuntimeException("用户名已存在");
         }
 
+        validateDepartment(dto.getDepartmentId());
+
         account.setUsername(dto.getUsername());
         account.setName(dto.getName());
         account.setGender(dto.getGender());
@@ -65,6 +78,7 @@ public class AccountServiceImpl implements AccountService {
         account.setRoleLevel(dto.getRoleLevel());
         account.setStatus(dto.getStatus());
         account.setIsSuper(dto.getIsSuper());
+        account.setDepartmentId(dto.getDepartmentId());
         account = accountRepository.save(account);
         return convertToDTO(account);
     }
@@ -88,8 +102,10 @@ public class AccountServiceImpl implements AccountService {
     @Override
     @Transactional(readOnly = true)
     public List<AccountDTO> getAllAccounts() {
-        return accountRepository.findByDeleted(NOT_DELETED).stream()
-                .map(this::convertToDTO)
+        List<Account> accounts = accountRepository.findByDeleted(NOT_DELETED);
+        Map<Long, String> departmentNames = loadDepartmentNames(accounts);
+        return accounts.stream()
+                .map(account -> convertToDTO(account, departmentNames.get(account.getDepartmentId())))
                 .collect(Collectors.toList());
     }
 
@@ -105,7 +121,45 @@ public class AccountServiceImpl implements AccountService {
         return convertToDTO(account);
     }
 
+    /**
+     * 部门为可选字段：不传（null）表示不设置部门；传了则必须是未删除的部门。
+     */
+    private void validateDepartment(Long departmentId) {
+        if (departmentId == null) {
+            return;
+        }
+        departmentRepository.findByIdAndDeleted(departmentId, NOT_DELETED)
+                .orElseThrow(() -> new RuntimeException("所属部门不存在"));
+    }
+
+    /**
+     * 批量取部门名称，避免列表查询出现 N+1。
+     */
+    private Map<Long, String> loadDepartmentNames(List<Account> accounts) {
+        Set<Long> departmentIds = accounts.stream()
+                .map(Account::getDepartmentId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (departmentIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return departmentRepository.findAllById(departmentIds).stream()
+                .filter(department -> !DELETED.equals(department.getDeleted()))
+                .collect(Collectors.toMap(Department::getId, Department::getName));
+    }
+
     private AccountDTO convertToDTO(Account account) {
+        String departmentName = null;
+        if (account.getDepartmentId() != null) {
+            departmentName = departmentRepository
+                    .findByIdAndDeleted(account.getDepartmentId(), NOT_DELETED)
+                    .map(Department::getName)
+                    .orElse(null);
+        }
+        return convertToDTO(account, departmentName);
+    }
+
+    private AccountDTO convertToDTO(Account account, String departmentName) {
         AccountDTO dto = new AccountDTO();
         dto.setId(account.getId());
         dto.setUsername(account.getUsername());
@@ -115,6 +169,8 @@ public class AccountServiceImpl implements AccountService {
         dto.setRoleLevel(account.getRoleLevel());
         dto.setStatus(account.getStatus());
         dto.setIsSuper(account.getIsSuper());
+        dto.setDepartmentId(account.getDepartmentId());
+        dto.setDepartmentName(departmentName);
         dto.setCreateTime(account.getCreateTime());
         dto.setUpdateTime(account.getUpdateTime());
         return dto;
