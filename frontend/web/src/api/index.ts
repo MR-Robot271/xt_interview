@@ -18,6 +18,15 @@ export const accountApi = {
   getAll() {
     return request.get('/accounts')
   },
+  getPage(params: {
+    page: number
+    size: number
+    username?: string
+    status?: number | null
+    roleLevel?: number | null
+  }) {
+    return request.get('/accounts/page', { params })
+  },
   getById(id: number) {
     return request.get(`/accounts/${id}`)
   },

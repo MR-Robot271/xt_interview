@@ -7,6 +7,28 @@
       <el-button :icon="Refresh" @click="loadUsers">刷新</el-button>
     </div>
 
+    <div class="search-bar">
+      <el-input
+        v-model="searchForm.username"
+        placeholder="用户名"
+        clearable
+        style="width: 180px"
+        @keyup.enter="handleSearch"
+        @clear="handleSearch"
+      />
+      <el-select v-model="searchForm.status" placeholder="状态" clearable style="width: 120px">
+        <el-option label="启用" :value="1" />
+        <el-option label="禁用" :value="0" />
+      </el-select>
+      <el-select v-model="searchForm.roleLevel" placeholder="权限级别" clearable style="width: 150px">
+        <el-option label="用户权限" :value="1" />
+        <el-option label="管理员权限" :value="2" />
+        <el-option label="超级管理员权限" :value="3" />
+      </el-select>
+      <el-button type="primary" :icon="Search" @click="handleSearch">搜索</el-button>
+      <el-button :icon="RefreshLeft" @click="handleReset">重置</el-button>
+    </div>
+
     <el-table
       v-loading="loading"
       :data="users"
@@ -14,11 +36,11 @@
       stripe
       style="width: 100%"
     >
-      <el-table-column prop="username" label="用户名" width="120" />
-      <el-table-column prop="name" label="姓名" width="100" />
+      <el-table-column prop="username" label="用户名" min-width="140" />
+      <el-table-column prop="name" label="姓名" min-width="130" />
       <el-table-column prop="gender" label="性别" width="80" />
-      <el-table-column prop="phone" label="联系方式" width="140" />
-      <el-table-column label="所属部门" width="140">
+      <el-table-column prop="phone" label="联系方式" width="150" />
+      <el-table-column label="所属部门" min-width="160">
         <template #default="{ row }">
           <span>{{ row.departmentName || '—' }}</span>
         </template>
@@ -30,14 +52,14 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="状态" width="80">
+      <el-table-column label="状态" width="90">
         <template #default="{ row }">
           <el-tag :type="row.status === 1 ? 'success' : 'danger'">
             {{ row.status === 1 ? '启用' : '禁用' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="createTime" label="创建时间" width="180" />
+      <el-table-column prop="createTime" label="创建时间" min-width="180" />
       <el-table-column label="操作" width="160" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" link :icon="Edit" @click="openEditDialog(row)">
@@ -49,6 +71,19 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <div class="pagination-bar">
+      <el-pagination
+        :current-page="currentPage"
+        :page-size="pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="total"
+        layout="total, sizes, prev, pager, next, jumper"
+        background
+        @current-change="handlePageChange"
+        @size-change="handleSizeChange"
+      />
+    </div>
 
     <el-dialog
       v-model="dialogVisible"
@@ -129,7 +164,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { accountApi, departmentApi } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete, Refresh } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete, Refresh, Search, RefreshLeft } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const loading = ref(false)
@@ -140,6 +175,16 @@ const editId = ref<number>(0)
 
 const users = ref<any[]>([])
 const departments = ref<any[]>([])
+
+const total = ref(0)
+const currentPage = ref(1)
+const pageSize = ref(10)
+
+const searchForm = reactive({
+  username: '',
+  status: null as number | null,
+  roleLevel: null as number | null
+})
 
 const formRef = ref<FormInstance>()
 
@@ -179,12 +224,45 @@ function roleTagType(level: number): 'info' | 'warning' | 'danger' {
 async function loadUsers() {
   loading.value = true
   try {
-    users.value = await accountApi.getAll()
+    const result: any = await accountApi.getPage({
+      page: currentPage.value - 1,
+      size: pageSize.value,
+      username: searchForm.username || undefined,
+      status: searchForm.status,
+      roleLevel: searchForm.roleLevel
+    })
+    users.value = result.list || []
+    total.value = result.totalElements || 0
   } catch (error: any) {
     ElMessage.error(error.message || '加载用户列表失败')
   } finally {
     loading.value = false
   }
+}
+
+function handleSearch() {
+  currentPage.value = 1
+  loadUsers()
+}
+
+function handleReset() {
+  searchForm.username = ''
+  searchForm.status = null
+  searchForm.roleLevel = null
+  currentPage.value = 1
+  loadUsers()
+}
+
+function handlePageChange(page: number) {
+  if (page === currentPage.value) return
+  currentPage.value = page
+  loadUsers()
+}
+
+function handleSizeChange(size: number) {
+  pageSize.value = size
+  currentPage.value = 1
+  loadUsers()
 }
 
 async function loadDepartments() {
@@ -251,6 +329,7 @@ async function handleSubmit() {
       } else {
         await accountApi.create(data)
         ElMessage.success('用户创建成功')
+        currentPage.value = 1
       }
       dialogVisible.value = false
       await loadUsers()
@@ -275,6 +354,9 @@ async function handleDelete(row: any) {
     )
     await accountApi.delete(row.id)
     ElMessage.success('用户删除成功')
+    if (users.value.length === 1 && currentPage.value > 1) {
+      currentPage.value -= 1
+    }
     await loadUsers()
   } catch (error: any) {
     if (error !== 'cancel') {
@@ -300,5 +382,18 @@ onMounted(() => {
   display: flex;
   gap: 12px;
   margin-bottom: 20px;
+}
+
+.search-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.pagination-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 </style>

@@ -1,6 +1,7 @@
 package com.xt.interview.service.impl;
 
 import com.xt.interview.dto.AccountDTO;
+import com.xt.interview.dto.PageResult;
 import com.xt.interview.entity.Account;
 import com.xt.interview.entity.Department;
 import com.xt.interview.repository.AccountRepository;
@@ -8,6 +9,10 @@ import com.xt.interview.repository.DepartmentRepository;
 import com.xt.interview.service.AccountService;
 import com.xt.interview.util.MD5Util;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +31,9 @@ public class AccountServiceImpl implements AccountService {
     private static final Integer DELETED = 1;
 
     private static final String DEFAULT_PASSWORD = "123456";
+
+    private static final int DEFAULT_PAGE_SIZE = 10;
+    private static final int MAX_PAGE_SIZE = 100;
 
     @Autowired
     private AccountRepository accountRepository;
@@ -107,6 +115,28 @@ public class AccountServiceImpl implements AccountService {
         return accounts.stream()
                 .map(account -> convertToDTO(account, departmentNames.get(account.getDepartmentId())))
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResult<AccountDTO> getAccountsPage(int page, int size, String username, Integer status, Integer roleLevel) {
+        int safePage = Math.max(page, 0);
+        int safeSize = size <= 0 ? DEFAULT_PAGE_SIZE : Math.min(size, MAX_PAGE_SIZE);
+        String keyword = (username == null || username.trim().isEmpty()) ? null : username.trim();
+
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "id"));
+        Page<Account> pageResult = accountRepository.search(keyword, status, roleLevel, pageable);
+
+        Map<Long, String> departmentNames = loadDepartmentNames(pageResult.getContent());
+        List<AccountDTO> list = pageResult.getContent().stream()
+                .map(account -> convertToDTO(account, departmentNames.get(account.getDepartmentId())))
+                .collect(Collectors.toList());
+
+        return new PageResult<>(list,
+                pageResult.getTotalElements(),
+                pageResult.getTotalPages(),
+                pageResult.getNumber(),
+                pageResult.getSize());
     }
 
     @Override

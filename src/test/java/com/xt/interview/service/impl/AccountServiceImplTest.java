@@ -1,6 +1,7 @@
 package com.xt.interview.service.impl;
 
 import com.xt.interview.dto.AccountDTO;
+import com.xt.interview.dto.PageResult;
 import com.xt.interview.entity.Account;
 import com.xt.interview.entity.Department;
 import com.xt.interview.repository.AccountRepository;
@@ -12,6 +13,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 import java.util.List;
 import java.util.Optional;
@@ -22,6 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -194,6 +202,73 @@ class AccountServiceImplTest {
 
         assertEquals(1, result.size());
         assertNull(result.get(0).getDepartmentName());
+    }
+
+    // ==================== 分页 + 条件查询 ====================
+
+    @Test
+    @DisplayName("分页查询：返回分页结构，并按当前页批量回填部门名称")
+    void getAccountsPage_shouldReturnPageResultWithDepartmentNames() {
+        Pageable pageable = PageRequest.of(1, 5);
+        Page<Account> page = new PageImpl<>(
+                List.of(account(2L, "lisi", 2L), account(1L, "zhangsan", 1L)), pageable, 12);
+        when(accountRepository.search(eq("li"), eq(1), eq(2), any(Pageable.class))).thenReturn(page);
+        when(departmentRepository.findAllById(any())).thenReturn(List.of(
+                department(1L, "研发部", NOT_DELETED),
+                department(2L, "运维部", NOT_DELETED)));
+
+        PageResult<AccountDTO> result = accountService.getAccountsPage(1, 5, "  li  ", 1, 2);
+
+        assertEquals(12L, result.getTotalElements());
+        assertEquals(3, result.getTotalPages());
+        assertEquals(1, result.getCurrentPage());
+        assertEquals(5, result.getPageSize());
+        assertEquals(2, result.getList().size());
+        assertEquals("运维部", result.getList().get(0).getDepartmentName());
+        assertEquals("研发部", result.getList().get(1).getDepartmentName());
+        verify(accountRepository).search(eq("li"), eq(1), eq(2), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("分页查询：页码负数归零、size 过大按上限截断，并按 id 倒序")
+    void getAccountsPage_shouldClampPagingParameters() {
+        when(accountRepository.search(isNull(), isNull(), isNull(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 100), 0));
+
+        PageResult<AccountDTO> result = accountService.getAccountsPage(-5, 1000, null, null, null);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(accountRepository).search(isNull(), isNull(), isNull(), captor.capture());
+        assertEquals(0, captor.getValue().getPageNumber());
+        assertEquals(100, captor.getValue().getPageSize());
+        Sort.Order order = captor.getValue().getSort().getOrderFor("id");
+        assertEquals(Sort.Direction.DESC, order.getDirection());
+        assertEquals(0L, result.getTotalElements());
+    }
+
+    @Test
+    @DisplayName("分页查询：size 非法时用默认值，空白用户名不参与过滤")
+    void getAccountsPage_shouldUseDefaultSizeAndIgnoreBlankUsername() {
+        when(accountRepository.search(isNull(), isNull(), isNull(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 10), 0));
+
+        accountService.getAccountsPage(0, 0, "   ", null, null);
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(accountRepository).search(isNull(), isNull(), isNull(), captor.capture());
+        assertEquals(10, captor.getValue().getPageSize());
+    }
+
+    @Test
+    @DisplayName("分页查询：结果为空时不查部门表")
+    void getAccountsPage_shouldSkipDepartmentLookupWhenEmpty() {
+        when(accountRepository.search(any(), any(), any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 10), 0));
+
+        PageResult<AccountDTO> result = accountService.getAccountsPage(0, 10, "nobody", null, null);
+
+        assertEquals(0, result.getList().size());
+        verify(departmentRepository, never()).findAllById(any());
     }
 
     // ==================== 辅助方法 ====================
