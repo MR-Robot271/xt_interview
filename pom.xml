@@ -20,7 +20,7 @@
     <properties>
         <java.version>26</java.version>
         <flyway.version>10.20.1</flyway.version>
-        <lombok.version>1.18.30</lombok.version>
+        <lombok.version>1.18.48</lombok.version>
     </properties>
 
     <dependencies>
