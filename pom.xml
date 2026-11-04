@@ -109,6 +109,31 @@
                     <mainClass>com.xt.interview.XtInterviewApplication</mainClass>
                 </configuration>
             </plugin>
+
+            <!-- 解析依赖路径，为下面 surefire 的 ${org.mockito:mockito-core:jar} 提供属性 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>mockito-agent-property</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- 在 JVM 启动时以 -javaagent 加载 Mockito，
+                 避免运行时动态 attach（JEP 451 警告，未来 JDK 将默认禁止动态加载 agent） -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>-javaagent:${org.mockito:mockito-core:jar}</argLine>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>
